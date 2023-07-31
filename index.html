@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>exercise</title>
+<meta charset="utf-8" />
+</head>
+<body>
+	<div>
+		<input type="button" value="Create table" onclick="CreateTable()"/>
+		<br>
+		<input type="button" value="Random fill database" onclick="RandomFillDatabase()"/>
+		<br>
+		<input type="button" value="Optimize table" onclick="OptimizeTable()"/>
+		<br>
+		<input type="button" value="Indexed table" onclick="IndexedTable()"/>
+		<br>
+		<input id="id_run_test" type="button" value="Run test" onclick="RunTest()"/>
+	</div>
+
+	<canvas id="id_graph_canvas" width="640" height="480" style="border:2px dotted"></canvas>
+
+	<div id="id_display_info"></div>
+
+	<div id="id_blockin_baner" style="position:absolute;background-color:#47444450;width:100%;height:100%;left:0px;top:0px;display:none"></div>
+
+	<script>
+		let BlockingBaner = document.getElementById('id_blockin_baner');
+		let DisplayInfo = document.getElementById('id_display_info');
+		let RunTestButton = document.getElementById('id_run_test');
+		let GraphCanvas = document.getElementById('id_graph_canvas');
+
+		let CanvasContext = GraphCanvas.getContext('2d');
+
+		CanvasContext.strokeStyle = 'red';
+		CanvasContext.lineWidth = 1;
+
+		function _post(PostObj, BlockScreen = true, Callback = null)
+		{
+			let xhr = new XMLHttpRequest();
+
+			xhr.open('POST', "web_actions.php", true);
+			xhr.setRequestHeader('Content-type', 'application/json; charset=UTF-8');
+			xhr.send(JSON.stringify(PostObj));
+
+			if(BlockScreen)
+				BlockingBaner.style.display = 'block';
+
+			xhr.onload = function(){
+
+				if(BlockScreen)
+					BlockingBaner.style.display = 'none';
+
+				//console.log(xhr.status);
+				//console.log(xhr.response);
+
+				if(Callback != null)
+					Callback(JSON.parse(xhr.response));
+			}
+		}
+
+		function CreateTable()
+		{
+			console.log("CreateTable()");
+			_post({action:"create_table"}, true, (response_obj)=>{
+				if(response_obj.responce_type == 'query_action')
+				{
+					if(response_obj.query.query_type == 'confirm')
+					{
+						if(confirm(response_obj.query.message))
+						{
+							_post({action:response_obj.query.action});
+						}
+					}
+				}
+			});
+		}
+
+		function RandomFillDatabase()
+		{
+			console.log("RandomFillDatabase()");
+
+			_post({action:"random_fill_database"}, true, (response_obj)=>{
+				if(response_obj.responce_type == 'status' && response_obj.status != 'ok')
+					console.log(response_obj);
+			});
+		}
+
+		function OptimizeTable()
+		{
+			_post({action:"optimize_table"}, true, (response_obj)=>{
+				console.log(response_obj);
+				//if(response_obj.responce_type == 'status' && response_obj.status != 'ok')
+				//	console.log(response_obj);
+			});
+		}
+
+		function IndexedTable()
+		{
+			_post({action:"indexed_table"}, true, (response_obj)=>{
+				if(response_obj.responce_type == 'status' && response_obj.status != 'ok')
+					console.log(response_obj);
+			});
+		}
+
+		let test_running = false;
+		let offset = 0;
+
+		function RunTest()
+		{
+			let shift_canvas = (ctx, w, h, dx, dy) => {
+				var imageData = ctx.getImageData(0, 0, w, h);
+				ctx.clearRect(0, 0, w, h);
+				ctx.putImageData(imageData, dx, dy);
+			}
+
+			let total_work_time = 0.0;
+			let last_average_time = 0.0;
+			let frames_count = 0;
+			let skip_first_frames = 3;
+
+			let print_selection_writes = () => {
+				_post({action:"print_selection_writes"}, false, (response_obj) => {
+
+					if(++frames_count > 10)
+					{
+						let average_time = total_work_time / frames_count;
+
+						total_work_time = 0.0;
+						frames_count = 0;
+
+						let a = last_average_time * 500.0;
+						let b = average_time * 500.0;
+
+						last_average_time = average_time;
+
+						DisplayInfo.innerHTML = average_time;
+
+						if(skip_first_frames > 0)
+							--skip_first_frames;
+
+						if(skip_first_frames == 0)
+						{
+							CanvasContext.beginPath();
+							CanvasContext.moveTo(GraphCanvas.width - 4 - 1, a);
+							CanvasContext.lineTo(GraphCanvas.width, b);
+							CanvasContext.stroke();
+
+							shift_canvas(CanvasContext, GraphCanvas.width, GraphCanvas.height, -4, 0);
+						}
+					}
+
+					if(response_obj.responce_type == 'result'){
+						total_work_time += response_obj.result;
+					}
+
+					//++frames_count;
+
+					if(test_running)
+						setTimeout(print_selection_writes);
+				});
+			};
+
+			if(!test_running){
+				test_running = true;
+				setTimeout(print_selection_writes);
+				RunTestButton.value='Stop test';
+			}else{
+				test_running = false;
+				RunTestButton.value='Run test';
+			}
+		}
+
+	</script>
+</body>
+</html>
