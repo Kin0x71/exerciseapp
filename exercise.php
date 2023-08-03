@@ -5,7 +5,7 @@ class Exercise
 	public static $DBHost = 'localhost';
 	public static $DBUserName = 'root';
 	public static $DBPassword = '';
-	public static $DBName = 'exercise_app';
+	public static $DBName = 'exercise';
 
 	public static $MinNameLength = 3;
 	public static $MaxNameLength = 8;
@@ -56,22 +56,24 @@ class Exercise
 
 	public static function DropTable()
 	{
-		self::_query_db("DROP TABLE users");
+		return self::_query_db("DROP TABLE `users`");
 	}
 
-	public static function CreateTable()
+	public static function CreateTable($DBEngine = 'InnoDB')
 	{
 		$query =
-		"CREATE TABLE `users` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT, `full_name` VARCHAR(255) NOT NULL, `date_of_birth` DATE NOT NULL, `gender` ENUM('MALE','FEMALE') NOT NULL, PRIMARY KEY (`id`)) ENGINE = InnoDB;";//MyISAM
+		"CREATE TABLE `users` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT, `full_name` CHAR(255) NOT NULL, `date_of_birth` DATE NOT NULL, `gender` ENUM('MALE','FEMALE') NOT NULL, PRIMARY KEY (`id`)) ENGINE = $DBEngine;";
 
 		if(!self::_query_db($query)){
-			echo "Table creation failed";
+			return false;
 		}
+
+		return true;
 	}
 
 	public static function AddRow(string $FirstName, string $Surname, string $Lastname, string $DateOfBirth, string $Gender)
 	{
-		$full_name = implode(', ', [$FirstName, $Surname, $Lastname]);
+		$full_name = implode(';', [$FirstName, $Surname, $Lastname]);
 
 		self::_query_db("INSERT INTO `users` (`full_name`, `date_of_birth`, `gender`) VALUES ('$full_name', '$DateOfBirth', '$Gender')");
 	}
@@ -109,7 +111,7 @@ class Exercise
 			$surname[0] = strtoupper($surname[0]);
 			$lastname[0] = strtoupper($lastname[0]);
 
-			$full_name = implode(', ', [$firstname, $surname, $lastname]);
+			$full_name = implode(';', [$firstname, $surname, $lastname]);
 
 			$date_of_birth = date("Y-m-d", rand(0, mktime(date("Y"))));
 
@@ -129,7 +131,7 @@ class Exercise
 			$surname[0] = strtoupper($surname[0]);
 			$lastname[0] = strtoupper($lastname[0]);
 
-			$full_name = implode(', ', [$firstname, $surname, $lastname]);
+			$full_name = implode(';', [$firstname, $surname, $lastname]);
 
 			$date_of_birth = date("Y-m-d", rand(0, mktime(date("Y"))));
 
@@ -139,19 +141,26 @@ class Exercise
 		self::_query_db('INSERT INTO `users` (`full_name`, `date_of_birth`, `gender`) VALUES '.implode(', ', $values));
 	}
 
-	public static function PrintUniqueWrites()
+	public static function PrintUniqueWrites(&$ret_time)
 	{
 		self::_query_db("SET session sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'");
 
+		$start_time = microtime(true);
+
 		$result = self::_query_db('SELECT * FROM `users` GROUP BY `full_name`, `date_of_birth` ASC');
+
+		$diff_time = microtime(true) - $start_time;
+
+		if($ret_time !== null)
+			$ret_time = $diff_time;
 
 		if($result === false)return;
 
 		$rows = $result->fetch_all(MYSQLI_ASSOC);
 
-		echo 'rows count:'.count($rows)."\n";
-
 		$first_day_year = mktime(0, 0, 0, '1','1', date('Y'));
+
+		$ret_rows = [];
 
 		foreach($rows as $value)
 		{
@@ -171,11 +180,11 @@ class Exercise
 				}
 			}
 
-			$full_name = implode(' ', explode(', ', $value['full_name']));
+			$full_name = implode(' ', explode(';', $value['full_name']));
 
 			$full_name = str_pad($full_name, ((self::$MaxNameLength * 3) + 2), ' ');
 
-			echo "$value[id]:\tFull name: $full_name\tDate of birth: $value[date_of_birth]\tGender: $value[gender]\tFull Years: $full_years\n";
+			$ret_rows[] = "$value[id]:\tFull name: $full_name\tDate of birth: $value[date_of_birth]\tGender: $value[gender]\tFull Years: $full_years\n";
 		}
 	}
 
@@ -198,7 +207,7 @@ class Exercise
 
 		foreach($rows as $value)
 		{
-			$full_name = implode(' ', explode(', ', $value['full_name']));
+			$full_name = implode(' ', explode(';', $value['full_name']));
 
 			$full_name = str_pad($full_name, ((self::$MaxNameLength * 3) + 3), ' ');
 

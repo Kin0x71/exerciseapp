@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
 <title>exercise</title>
@@ -6,15 +6,27 @@
 </head>
 <body>
 	<div>
-		<input type="button" value="Create table" onclick="CreateTable()"/>
-		<br>
+		<div>
+			<input type="button" value="Create table" onclick="CreateTable()"/>
+			<select id="id_select_dbtype">
+				<option>InnoDB</option>
+				<option>MyISAM</option>
+				<option>MRG_MYISAM</option>
+				<option>MEMORY</option>
+				<option>BLACKHOLE</option>
+				<option>CSV</option>
+				<option>ARCHIVE</option>
+			</select>
+		</div>
 		<input type="button" value="Random fill database" onclick="RandomFillDatabase()"/>
-		<br>
-		<input type="button" value="Optimize table" onclick="OptimizeTable()"/>
 		<br>
 		<input type="button" value="Indexed table" onclick="IndexedTable()"/>
 		<br>
-		<input id="id_run_test" type="button" value="Run test" onclick="RunTest()"/>
+		<input type="button" value="Optimize table" onclick="OptimizeTable()"/>
+		<br>
+		<input id="id_run_test" type="button" value="Run test (PRINT_SELECTION_WRITES)" onclick="RunTest_PRINT_SELECTION_WRITES()"/>
+		<br>
+		<input id="id_run_test" type="button" value="Run test (PRINT_UNIQUE_WRITES)" onclick="RunTest_PRINT_UNIQUE_WRITES()"/>
 	</div>
 
 	<canvas id="id_graph_canvas" width="640" height="480" style="border:2px dotted"></canvas>
@@ -60,15 +72,18 @@
 
 		function CreateTable()
 		{
-			console.log("CreateTable()");
-			_post({action:"create_table"}, true, (response_obj)=>{
+			let select_dbtype = document.getElementById('id_select_dbtype');
+
+			console.log(select_dbtype.value);
+
+			_post({action:"create_table", db_type:select_dbtype.value}, true, (response_obj)=>{
 				if(response_obj.responce_type == 'query_action')
 				{
 					if(response_obj.query.query_type == 'confirm')
 					{
 						if(confirm(response_obj.query.message))
 						{
-							_post({action:response_obj.query.action});
+							_post({action:response_obj.query.action, arg:response_obj.query.arg});
 						}
 					}
 				}
@@ -77,8 +92,6 @@
 
 		function RandomFillDatabase()
 		{
-			console.log("RandomFillDatabase()");
-
 			_post({action:"random_fill_database"}, true, (response_obj)=>{
 				if(response_obj.responce_type == 'status' && response_obj.status != 'ok')
 					console.log(response_obj);
@@ -105,7 +118,7 @@
 		let test_running = false;
 		let offset = 0;
 
-		function RunTest()
+		function RunTest_PRINT_SELECTION_WRITES()
 		{
 			let shift_canvas = (ctx, w, h, dx, dy) => {
 				var imageData = ctx.getImageData(0, 0, w, h);
@@ -153,8 +166,6 @@
 						total_work_time += response_obj.result;
 					}
 
-					//++frames_count;
-
 					if(test_running)
 						setTimeout(print_selection_writes);
 				});
@@ -163,11 +174,22 @@
 			if(!test_running){
 				test_running = true;
 				setTimeout(print_selection_writes);
-				RunTestButton.value='Stop test';
+				RunTestButton.value='Stop test (PRINT_SELECTION_WRITES)';
 			}else{
 				test_running = false;
-				RunTestButton.value='Run test';
+				RunTestButton.value='Run test (PRINT_SELECTION_WRITES)';
 			}
+		}
+
+		function RunTest_PRINT_UNIQUE_WRITES()
+		{
+			_post({action:"print_unique_writes"}, true, (response_obj)=>{
+				if(response_obj.responce_type == 'result'){
+					DisplayInfo.innerHTML =  response_obj.result;
+
+					alert("Запрос выполднялся "+response_obj.result+" секунд.");
+				}
+			});
 		}
 
 	</script>

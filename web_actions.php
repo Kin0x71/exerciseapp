@@ -23,19 +23,21 @@
 	{
 		case 'create_table':
 			if(Exercise::IsTableExist()){
-				echo json_encode((object)['responce_type' => 'query_action', 'query' => (object)['query_type' => 'confirm', 'action' => 'drop_create_table', 'message' => "table is exists.\ndrop table? Y/N"]]);
+				echo json_encode((object)['responce_type' => 'query_action', 'query' => (object)['query_type' => 'confirm', 'action' => 'drop_create_table', 'arg' => $query_obj->db_type, 'message' => "table is exists.\ndrop table? Y/N"]]);
 			}else{
-				Exercise::CreateTable();
+				Exercise::CreateTable($query_obj->db_type);
 			}
 			break;
 
 		case 'drop_create_table':
 			Exercise::DropTable();
-			Exercise::CreateTable();
+			Exercise::CreateTable($query_obj->arg);
 			echo json_encode((object)['responce_type' => 'status', 'status' => 'ok']);
 			break;
 
 		case 'random_fill_database':
+			set_time_limit(60 * 5);
+
 			Exercise::GenerateMillionHundredRandomRows();
 			echo json_encode((object)['responce_type' => 'status', 'status' => 'ok']);
 			break;
@@ -43,6 +45,14 @@
 		case 'print_selection_writes':
 			$diff_time = 0.0;
 			$result_rows = Exercise::PrintSelectionWrites($diff_time);
+			echo json_encode((object)['responce_type' => 'result', 'result' => $diff_time]);
+			break;
+
+		case 'print_unique_writes':
+			set_time_limit(60 * 5);
+
+			$diff_time = 0.0;
+			$result_rows = Exercise::PrintUniqueWrites($diff_time);
 			echo json_encode((object)['responce_type' => 'result', 'result' => $diff_time]);
 			break;
 
