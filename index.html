@@ -11,27 +11,20 @@
 			<select id="id_select_dbtype">
 				<option>InnoDB</option>
 				<option>MyISAM</option>
-				<option>MRG_MYISAM</option>
-				<option>MEMORY</option>
-				<option>BLACKHOLE</option>
-				<option>CSV</option>
-				<option>ARCHIVE</option>
 			</select>
 		</div>
-		<input type="button" value="Random fill database" onclick="RandomFillDatabase()"/>
+		<input type="button" value="Generate random rows" onclick="GenerateRandomRows()"/>
 		<br>
 		<input type="button" value="Indexed table" onclick="IndexedTable()"/>
 		<br>
 		<input type="button" value="Optimize table" onclick="OptimizeTable()"/>
 		<br>
 		<input id="id_run_test" type="button" value="Run test (PRINT_SELECTION_WRITES)" onclick="RunTest_PRINT_SELECTION_WRITES()"/>
-		<br>
-		<input id="id_run_test" type="button" value="Run test (PRINT_UNIQUE_WRITES)" onclick="RunTest_PRINT_UNIQUE_WRITES()"/>
 	</div>
 
-	<canvas id="id_graph_canvas" width="640" height="480" style="border:2px dotted"></canvas>
+	<div id="id_display_info" style="height:64px;display:flex;align-items:center"></div>
 
-	<div id="id_display_info"></div>
+	<canvas id="id_graph_canvas" width="640" height="480" style="border:2px dotted"></canvas>
 
 	<div id="id_blockin_baner" style="position:absolute;background-color:#47444450;width:100%;height:100%;left:0px;top:0px;display:none"></div>
 
@@ -41,7 +34,7 @@
 		let RunTestButton = document.getElementById('id_run_test');
 		let GraphCanvas = document.getElementById('id_graph_canvas');
 
-		let CanvasContext = GraphCanvas.getContext('2d');
+		let CanvasContext = GraphCanvas.getContext('2d', {willReadFrequently:true});
 
 		CanvasContext.strokeStyle = 'red';
 		CanvasContext.lineWidth = 1;
@@ -62,9 +55,6 @@
 				if(BlockScreen)
 					BlockingBaner.style.display = 'none';
 
-				//console.log(xhr.status);
-				//console.log(xhr.response);
-
 				if(Callback != null)
 					Callback(JSON.parse(xhr.response));
 			}
@@ -76,34 +66,57 @@
 
 			console.log(select_dbtype.value);
 
-			_post({action:"create_table", db_type:select_dbtype.value}, true, (response_obj)=>{
-				if(response_obj.responce_type == 'query_action')
-				{
-					if(response_obj.query.query_type == 'confirm')
-					{
-						if(confirm(response_obj.query.message))
-						{
-							_post({action:response_obj.query.action, arg:response_obj.query.arg});
-						}
-					}
-				}
-			});
+			_post({action:"create_table", db_type:select_dbtype.value}, true);
 		}
 
-		function RandomFillDatabase()
+		function GenerateRandomRows()
 		{
-			_post({action:"random_fill_database"}, true, (response_obj)=>{
-				if(response_obj.responce_type == 'status' && response_obj.status != 'ok')
-					console.log(response_obj);
-			});
+			let total_rows = 1000000;
+			let rows_per_part = 50000;
+
+			let iterations = total_rows / rows_per_part;
+			let left_rows = total_rows % rows_per_part;
+
+			let total_writes = 0;
+			let last_part = false;
+			let end_flag = false;
+
+			let generate_random_rows = (rows_count, first_character) =>{
+
+				_post({action:"generate_random_rows", "rows_count":rows_count, "first_character":first_character}, false, (response_obj)=>{
+					if(response_obj.responce_type == 'status'){
+
+						total_writes += parseInt(response_obj.total_writes);
+
+						DisplayInfo.innerHTML = response_obj.status+" current writes:"+response_obj.total_writes+" total_writes:"+total_writes+" "+parseInt((total_writes / (total_rows + 100)) * 100)+"%<br>last_row:<br>"+response_obj.last_row;
+
+						if(--iterations > 0){
+							setTimeout(generate_random_rows(rows_per_part, ""));
+							return;
+						}else if(!last_part){
+							last_part = true;
+
+							if(left_rows > 0){
+								setTimeout(generate_random_rows(left_rows, ""));
+								return;
+							}
+						}
+
+						if(last_part && !end_flag){
+							end_flag = true;
+							generate_random_rows(100, "F");
+						}
+					}
+				});
+			}
+
+			setTimeout(generate_random_rows(rows_per_part, ""));
 		}
 
 		function OptimizeTable()
 		{
 			_post({action:"optimize_table"}, true, (response_obj)=>{
 				console.log(response_obj);
-				//if(response_obj.responce_type == 'status' && response_obj.status != 'ok')
-				//	console.log(response_obj);
 			});
 		}
 
@@ -127,44 +140,58 @@
 			}
 
 			let total_work_time = 0.0;
+			let last_work_time = 0.0;
 			let last_average_time = 0.0;
 			let frames_count = 0;
-			let skip_first_frames = 3;
+			let skip_first_frames = 10;
+			let scale = 500.0;
 
 			let print_selection_writes = () => {
 				_post({action:"print_selection_writes"}, false, (response_obj) => {
+
+					let work_time = response_obj.result;
+					total_work_time += response_obj.result;
+
+					let offset_canvas = false;
+
+					if(skip_first_frames < 0){
+						CanvasContext.beginPath();
+						CanvasContext.moveTo((GraphCanvas.width - 4) - 1, last_work_time * scale);
+						CanvasContext.lineTo(GraphCanvas.width, work_time * scale);
+						CanvasContext.strokeStyle = '#ff0000';
+						CanvasContext.stroke();
+
+						offset_canvas = true;
+					}
+
+					last_work_time = work_time;
 
 					if(++frames_count > 10)
 					{
 						let average_time = total_work_time / frames_count;
 
-						total_work_time = 0.0;
-						frames_count = 0;
+						let offs = skip_first_frames > -10 ? 1 : 40;
 
-						let a = last_average_time * 500.0;
-						let b = average_time * 500.0;
+						if(skip_first_frames < 0){
+							CanvasContext.beginPath();
+							CanvasContext.moveTo((GraphCanvas.width - 4) - offs, last_average_time * scale);
+							CanvasContext.lineTo(GraphCanvas.width, average_time * scale);
+							CanvasContext.strokeStyle = '#0000ff';
+							CanvasContext.stroke();
+						}
 
 						last_average_time = average_time;
-
-						DisplayInfo.innerHTML = average_time;
-
-						if(skip_first_frames > 0)
-							--skip_first_frames;
-
-						if(skip_first_frames == 0)
-						{
-							CanvasContext.beginPath();
-							CanvasContext.moveTo(GraphCanvas.width - 4 - 1, a);
-							CanvasContext.lineTo(GraphCanvas.width, b);
-							CanvasContext.stroke();
-
-							shift_canvas(CanvasContext, GraphCanvas.width, GraphCanvas.height, -4, 0);
-						}
+						total_work_time = 0.0;
+						frames_count = 0;
 					}
 
-					if(response_obj.responce_type == 'result'){
-						total_work_time += response_obj.result;
-					}
+					DisplayInfo.innerHTML = work_time+"<br>"+last_average_time;
+
+					if(offset_canvas)
+						shift_canvas(CanvasContext, GraphCanvas.width, GraphCanvas.height, -4, 0);
+
+					if(skip_first_frames > -10)
+						--skip_first_frames;
 
 					if(test_running)
 						setTimeout(print_selection_writes);
@@ -179,17 +206,6 @@
 				test_running = false;
 				RunTestButton.value='Run test (PRINT_SELECTION_WRITES)';
 			}
-		}
-
-		function RunTest_PRINT_UNIQUE_WRITES()
-		{
-			_post({action:"print_unique_writes"}, true, (response_obj)=>{
-				if(response_obj.responce_type == 'result'){
-					DisplayInfo.innerHTML =  response_obj.result;
-
-					alert("Запрос выполднялся "+response_obj.result+" секунд.");
-				}
-			});
 		}
 
 	</script>

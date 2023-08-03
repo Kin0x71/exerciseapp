@@ -36,7 +36,7 @@ class Exercise
 
 		$ret = self::$_DBConnection->query($Query);
 
-		if($DisplayErrors && $ret === false){
+		if($DisplayErrors && self::$_DBConnection->errno !== 0){
 			echo "query error:\n$Query\n";
 
 			foreach(self::$_DBConnection->error_list as $error)
@@ -48,7 +48,7 @@ class Exercise
 
 	public static function IsTableExist()
 	{
-		if(self::_query_db("select 1 from users", false) !== false)
+		if(self::_query_db("SELECT 1 FROM `users` LIMIT 1", false) !== false)
 			return true;
 
 		return false;
@@ -62,13 +62,14 @@ class Exercise
 	public static function CreateTable($DBEngine = 'InnoDB')
 	{
 		$query =
-		"CREATE TABLE `users` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT, `full_name` CHAR(255) NOT NULL, `date_of_birth` DATE NOT NULL, `gender` ENUM('MALE','FEMALE') NOT NULL, PRIMARY KEY (`id`)) ENGINE = $DBEngine;";
+		//"CREATE TABLE `users` (`full_name` CHAR(255) cp1251 COLLATE cp1251_general_ci NOT NULL, `gender` BOOLEAN NOT NULL, `date_of_birth` DATE NOT NULL) ENGINE = $DBEngine;";
+		"CREATE TABLE `users` (`id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT, `full_name` CHAR(255) CHARACTER SET cp1251 COLLATE cp1251_general_ci NOT NULL, `gender` BOOLEAN NOT NULL, `date_of_birth` DATE NOT NULL, PRIMARY KEY (`id`) USING BTREE) ENGINE = $DBEngine;";
+		self::_query_db($query);
 
-		if(!self::_query_db($query)){
-			return false;
-		}
-
-		return true;
+		if(self::$_DBConnection->errno == 0)
+			return true;
+		else
+			return self::$_DBConnection->error_list;
 	}
 
 	public static function AddRow(string $FirstName, string $Surname, string $Lastname, string $DateOfBirth, string $Gender)
@@ -90,7 +91,7 @@ class Exercise
 		{
 			$char_array[$i] = $chracters[rand(0, $chracters_count)];
 
-			if($i > 0 && $char_array[$i - 1] == $char_array[$i])
+			if($i > 0 && $char_array[$i] == $char_array[$i - 1])
 				--$i;
 		}
 
@@ -115,10 +116,9 @@ class Exercise
 
 			$date_of_birth = date("Y-m-d", rand(0, mktime(date("Y"))));
 
-			$genders = ['MALE', 'FEMALE'];
-			$gender = $genders[rand(0,  1)];
+			$b_gender = rand(0,  1);
 
-			$values[] = "('$full_name', '$date_of_birth', '$gender')";
+			$values[] = "('$full_name', '$date_of_birth', '$b_gender')";
 		}
 
 		for($ri = 0;$ri < 100; ++$ri)
@@ -135,21 +135,67 @@ class Exercise
 
 			$date_of_birth = date("Y-m-d", rand(0, mktime(date("Y"))));
 
-			$values[] = "('$full_name', '$date_of_birth', 'MALE')";
+			$values[] = "('$full_name', '$date_of_birth', 1)";
 		}
 
-		self::_query_db('INSERT INTO `users` (`full_name`, `date_of_birth`, `gender`) VALUES '.implode(', ', $values));
+		$rows_parts = array_chunk($values, count($values) / 128);
+
+		$total_writes = 0;
+		foreach($rows_parts as $row_part)
+		{
+			if(self::_query_db('INSERT INTO `users` (`full_name`, `date_of_birth`, `gender`) VALUES '.implode(', ', $row_part)) !== false)
+			{
+				if(self::$_DBConnection->errno === 0)
+					$total_writes +=  self::$_DBConnection->affected_rows;
+				else
+					file_put_contents('error_log.txt', self::$_DBConnection->error, FILE_APPEND);
+			}
+		}
+
+		return (object)['total_writes' => $total_writes, 'parts_count' => count($rows_parts), 'last_row' => $values[count($values) - 1]];
+	}
+
+	public static function GenerateRandomRows($RowsCount, $FirstCharacter)
+	{
+		$values = [];
+
+		for($ri = 0;$ri < $RowsCount; ++$ri)
+		{
+			$firstname = $FirstCharacter.self::_generate_string();
+			$surname = self::_generate_string();
+			$lastname = self::_generate_string();
+
+			$firstname[0] = strtoupper($firstname[0]);
+			$surname[0] = strtoupper($surname[0]);
+			$lastname[0] = strtoupper($lastname[0]);
+
+			$full_name = implode(';', [$firstname, $surname, $lastname]);
+
+			$date_of_birth = date("Y-m-d", rand(0, mktime(date("Y"))));
+
+			$b_gender = rand(0,  1);
+
+			$values[] = "('$full_name', '$date_of_birth', '$b_gender')";
+		}
+
+		if(self::_query_db('INSERT INTO `users` (`full_name`, `date_of_birth`, `gender`) VALUES '.implode(', ', $values)) !== false)
+		{
+			if(self::$_DBConnection->errno === 0)
+				return (object)['total_writes' => self::$_DBConnection->affected_rows, 'last_row' => $values[count($values) - 1]];
+			else
+				file_put_contents('error_log.txt', self::$_DBConnection->error, FILE_APPEND);
+		}
 	}
 
 	public static function PrintUniqueWrites(&$ret_time)
 	{
+		//заклинание на избежание ошибки
+		//Expression #1 of SELECT list is not in GROUP BY clause and contains nonaggregated column 'exercise.users.id' which is not functionally dependent on columns in GROUP BY clause; this is incompatible with sql_mode=only_full_group_by
 		self::_query_db("SET session sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'");
 
 		$start_time = microtime(true);
-
+		
 		$result = self::_query_db('SELECT * FROM `users` GROUP BY `full_name`, `date_of_birth` ASC');
-
-		$diff_time = microtime(true) - $start_time;
 
 		if($ret_time !== null)
 			$ret_time = $diff_time;
@@ -184,15 +230,19 @@ class Exercise
 
 			$full_name = str_pad($full_name, ((self::$MaxNameLength * 3) + 2), ' ');
 
-			$ret_rows[] = "$value[id]:\tFull name: $full_name\tDate of birth: $value[date_of_birth]\tGender: $value[gender]\tFull Years: $full_years\n";
+			$str_gender = $value['gender'] ? 'MALE' : 'FEMALE';
+
+			$ret_rows[] = "$value[id]:\tFull name: $full_name\tDate of birth: $value[date_of_birth]\tGender: $str_gender\tFull Years: $full_years";
 		}
+		
+		return $ret_rows;
 	}
 
 	public static function PrintSelectionWrites(&$ret_time)
 	{
 		$start_time = microtime(true);
 
-		$result = self::_query_db('SELECT full_name, gender FROM `users` WHERE `gender` = \'MALE\' AND LEFT(`full_name`, 1) = \'F\'');
+		$result = self::_query_db('SELECT full_name, gender FROM `users` WHERE `gender` = 1 AND LEFT(`full_name`, 1) = \'F\'');
 
 		$diff_time = microtime(true) - $start_time;
 
@@ -211,7 +261,9 @@ class Exercise
 
 			$full_name = str_pad($full_name, ((self::$MaxNameLength * 3) + 3), ' ');
 
-			$ret_rows[] = "$full_name $value[gender]";
+			$str_gender = $value['gender'] ? 'MALE' : 'FEMALE';
+
+			$ret_rows[] = "$full_name $str_gender";
 		}
 
 		return $ret_rows;
@@ -221,12 +273,12 @@ class Exercise
 	{
 		self::_query_db('OPTIMIZE TABLE `users`');
 
-		return print_r(self::$_DBConnection->error, true);
+		return self::$_DBConnection->error;
 	}
 
 	public static function IndexedTable()
 	{
-		self::_query_db('ALTER TABLE `users` ADD UNIQUE `full_name__gender` (`id`, `full_name`, `gender`)');
+		self::_query_db('ALTER TABLE `users` ADD PRIMARY KEY (`full_name`, `gender`) USING BTREE;');
 	}
 }
 ?>

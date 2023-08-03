@@ -1,5 +1,4 @@
-﻿<?php
-
+<?php
 	if(!ini_get('register_argc_argv')){
 		if(!ini_set('register_argc_argv', '1')){
 			echo "not set register_argc_argv.\n";
@@ -19,7 +18,7 @@
 		public const PRINT_UNIQUE_WRITES = 3;
 		public const PRINT_SELECTION_WRITES = 5;
 	}
-
+	
 	$command = (int)$argv[1];
 
 	require_once('exercise.php');
@@ -52,7 +51,9 @@
 
 			set_time_limit(60 * 5);
 
-			Exercise::GenerateMillionHundredRandomRows();
+			$result = Exercise::GenerateMillionHundredRandomRows();
+
+			echo "Rows writed: $result->total_writes parts_count: $result->parts_count\n";
 
 			break;
 		case _ARGS::ADD_ROW:
@@ -68,9 +69,14 @@
 			$surname = $argv[3];
 			$lastname = $argv[4];
 			$date_of_birth = $argv[5];
-			$gender = strtoupper($argv[6]);
 
-			echo "($name $surname $lastname) $date_of_birth $gender\n";
+			$str_gender = strtoupper($argv[6]);
+
+			if($str_gender != 'MALE' && $str_gender!= 'FEMALE'){
+				echo "undefined gender. gender must by 'male' or 'female'";
+				Exercise::CloseDB();
+				exit(-4);
+			}
 
 			if(strtotime($date_of_birth) === false){
 				echo "invalid date format. use format as Y-m-d";
@@ -78,28 +84,36 @@
 				exit(-4);
 			}
 
-			if($gender != 'MALE' && $gender!= 'FEMALE'){
-				echo "undefined gender. gender must by 'male' or 'female'";
-				Exercise::CloseDB();
-				exit(-4);
-			}
+			echo "($name $surname $lastname) $date_of_birth $str_gender\n";
+
+			$gender = $str_gender == 'MALE' ? 1 : 0;
 
 			Exercise::AddRow($name, $surname, $lastname, $date_of_birth, $gender);
 
 			break;
 		case _ARGS::PRINT_UNIQUE_WRITES:
 			echo "PRINT_UNIQUE_WRITES\n";
-
+			
+			echo "Please wait.\n";
+			
+			echo "$limit\n";
+			
+			set_time_limit(60 * 5);
+			
 			$diff_time = 0.0;
 			$result_rows = Exercise::PrintUniqueWrites($diff_time);
+			$rows_count = count($result_rows);
 
 			echo "Lead time: $diff_time\n";
 			echo 'Results count: '.count($result_rows)."\n";
-			$line = strtoupper(readline("Print all results? Y/N:"));
 
-			if($line == 'Y'){
-				foreach($result_rows as $row){
-					echo "$row\n";
+			if($rows_count > 0){
+				$line = strtoupper(readline("Print all results? Y/N:"));
+
+				if($line == 'Y'){
+					foreach($result_rows as $row){
+						echo "$row\n";
+					}
 				}
 			}
 
@@ -107,8 +121,6 @@
 		case _ARGS::PRINT_SELECTION_WRITES:
 			echo "PRINT_SELECTION_WRITES\n";
 
-			//до 0.45 - 0.47
-			//после 0.40 - 0.44
 			$diff_time = 0.0;
 			$result_rows = Exercise::PrintSelectionWrites($diff_time);
 
